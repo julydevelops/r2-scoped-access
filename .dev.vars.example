@@ -1,0 +1,11 @@
+# Parent R2 tokens, one pair per trust domain declared in policy.json.
+# Each must be an Account API token with "Object Read & Write" scoped ONLY to
+# that domain's buckets. A child credential cannot exceed its parent's bucket
+# scope, which contains a policy bug to one domain.
+#
+# AKID   = the token's Access Key ID
+# SECRET = the token's Secret Access Key (sha256 of the token value)
+PARENT_RESEARCH_AKID=
+PARENT_RESEARCH_SECRET=
+PARENT_PRODUCTION_AKID=
+PARENT_PRODUCTION_SECRET=

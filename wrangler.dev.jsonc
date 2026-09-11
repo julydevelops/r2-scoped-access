@@ -1,0 +1,35 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "r2-scoped-access-dev",
+	"main": "src/worker/index.ts",
+	"compatibility_date": "2026-09-10",
+	"compatibility_flags": ["nodejs_compat"],
+	"vars": {
+		"CF_ACCOUNT_ID": "replace-with-account-id"
+	},
+	"secrets": {
+		"required": [
+			"PARENT_RESEARCH_AKID",
+			"PARENT_RESEARCH_SECRET",
+			"PARENT_PRODUCTION_AKID",
+			"PARENT_PRODUCTION_SECRET"
+		]
+	},
+	"access": {
+		"dev": {
+			"aud": "r2-scoped-access-dev",
+			"identity": {
+				"email": "researcher@example.com",
+				"groups": ["Research"]
+			}
+		}
+	},
+	"d1_databases": [
+		{
+			"binding": "AUDIT_DB",
+			"database_name": "r2-scoped-access-audit",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "./migrations"
+		}
+	]
+}

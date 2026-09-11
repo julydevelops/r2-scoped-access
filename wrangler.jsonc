@@ -1,0 +1,42 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "r2-scoped-access",
+	"main": "src/worker/index.ts",
+	"compatibility_date": "2026-09-10",
+	"compatibility_flags": ["nodejs_compat"],
+	"workers_dev": false,
+	"preview_urls": false,
+	"routes": [{ "pattern": "r2-access.example.com", "custom_domain": true }],
+	"observability": {
+		"enabled": true,
+		"redact_query_string": true,
+		"logs": { "head_sampling_rate": 1 },
+		"traces": { "enabled": true, "head_sampling_rate": 0.01 }
+	},
+	"vars": {
+		"CF_ACCOUNT_ID": "replace-with-account-id",
+		"ACCESS_TEAM_DOMAIN": "replace-with-team.cloudflareaccess.com",
+		"ACCESS_AUD": "replace-with-access-audience"
+	},
+	"secrets": {
+		"required": [
+			"PARENT_RESEARCH_AKID",
+			"PARENT_RESEARCH_SECRET",
+			"PARENT_PRODUCTION_AKID",
+			"PARENT_PRODUCTION_SECRET"
+		]
+	},
+	"assets": {
+		"directory": "./dist",
+		"not_found_handling": "single-page-application",
+		"run_worker_first": ["/api/*"]
+	},
+	"d1_databases": [
+		{
+			"binding": "AUDIT_DB",
+			"database_name": "r2-scoped-access-audit",
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "./migrations"
+		}
+	]
+}

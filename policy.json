@@ -1,0 +1,87 @@
+{
+	"version": 1,
+	"domains": [
+		{
+			"id": "RESEARCH",
+			"buckets": [
+				"demo-research"
+			]
+		},
+		{
+			"id": "PRODUCTION",
+			"buckets": [
+				"demo-production"
+			]
+		}
+	],
+	"roles": {
+		"research-reader": [
+			{
+				"bucket": "demo-research",
+				"prefixes": [
+					"datasets/"
+				],
+				"permission": "read",
+				"maxTtlSeconds": 3600
+			}
+		],
+		"research-writer": [
+			{
+				"bucket": "demo-research",
+				"prefixes": [
+					"scratch/"
+				],
+				"permission": "write",
+				"maxTtlSeconds": 3600
+			}
+		],
+		"production-reader": [
+			{
+				"bucket": "demo-production",
+				"prefixes": [
+					"logs/2026/"
+				],
+				"permission": "read",
+				"maxTtlSeconds": 900
+			}
+		],
+		"production-operator": [
+			{
+				"bucket": "demo-production",
+				"prefixes": [
+					""
+				],
+				"permission": "write",
+				"maxTtlSeconds": 900,
+				"allowDelete": true
+			}
+		]
+	},
+	"assignments": [
+		{
+			"group": "Research",
+			"roles": [
+				"research-reader",
+				"research-writer"
+			]
+		},
+		{
+			"group": "SRE",
+			"roles": [
+				"production-reader"
+			]
+		},
+		{
+			"group": "Storage-Admin",
+			"roles": [
+				"production-operator"
+			]
+		}
+	],
+	"auditors": {
+		"groups": [
+			"Storage-Admin"
+		],
+		"emails": ["storage.owner@example.com"]
+	}
+}
