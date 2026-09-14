@@ -1,3 +1,4 @@
+import type { AuditRow } from "../../shared/api-types";
 import type { Identity, ResolvedGrant } from "../domain/policy";
 
 /**
@@ -9,11 +10,31 @@ import type { Identity, ResolvedGrant } from "../domain/policy";
 
 export type AuditOutcome = "granted" | "denied" | "error";
 
+/**
+ * The closed set of auditable operations.
+ *
+ * Enumerated rather than left as `string` because the audit log is the artefact
+ * this application exists to produce: a typo would silently create a new action
+ * name that no report or query knows to look for.
+ *
+ * `put-intent` is recorded before the write reaches R2 and is the only action
+ * that does not assert an outcome, so that a request which kills the isolate
+ * mid-upload still leaves evidence that write capability was exercised.
+ */
+export type AuditAction =
+	| "identity-read"
+	| "audit-read"
+	| "list"
+	| "get"
+	| "put-intent"
+	| "put"
+	| "vend";
+
 export class AuditError extends Error {}
 
 export interface AuditEvent {
 	identity: Identity;
-	action: string;
+	action: AuditAction;
 	bucket: string | null;
 	path: string | null;
 	permission: string | null;
@@ -102,4 +123,44 @@ export async function record(db: D1Database, event: AuditEvent): Promise<void> {
 		console.error(JSON.stringify({ auditWriteFailed: message, requestId: event.requestId }));
 		throw new AuditError(`audit write failed: ${message}`);
 	}
+}
+
+/**
+ * Columns exposed when reading the log back.
+ *
+ * Enumerated rather than selected with `*` so that adding an internal column to
+ * the table, `id` included, cannot widen what the API returns. This list is the
+ * projection that `AuditRow` in the shared contract describes.
+ */
+const READABLE_COLUMNS =
+	"ts, email, action, bucket, path, permission, prefixes, actions, ttl_seconds, domain_id, role, outcome, detail, request_id";
+
+export interface AuditQuery {
+	/**
+	 * Restricts the read to one principal's own rows. `null` reads every
+	 * principal and is only reachable for policy-declared auditors.
+	 */
+	email: string | null;
+	limit: number;
+}
+
+/**
+ * Most recent rows first.
+ *
+ * Ordered by `id` rather than `ts` because `ts` is an application-supplied
+ * ISO string and several events inside one request share it, while `id` is
+ * monotonic and therefore gives a stable page boundary.
+ */
+export async function listRecent(db: D1Database, query: AuditQuery): Promise<AuditRow[]> {
+	const statement =
+		query.email === null
+			? db.prepare(`SELECT ${READABLE_COLUMNS} FROM audit_log ORDER BY id DESC LIMIT ?1`).bind(query.limit)
+			: db
+					.prepare(
+						`SELECT ${READABLE_COLUMNS} FROM audit_log WHERE email = ?1 COLLATE NOCASE ORDER BY id DESC LIMIT ?2`,
+					)
+					.bind(query.email, query.limit);
+
+	const { results } = await statement.all<AuditRow>();
+	return results;
 }
