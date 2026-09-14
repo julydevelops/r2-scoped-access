@@ -27,21 +27,59 @@ Key constraint: Workers Static Assets do not propagate `ctx.access`, so API rout
 ## Tech Stack
 
 - Cloudflare Workers with Workers Static Assets
+- Hono for API routing and middleware
+- Zod for request validation (`@hono/zod-validator`)
 - React 19, Vite, Tailwind CSS (client)
 - Cloudflare Access for identity
 - R2 temporary credentials via local JWT signing
 - D1 for audit records
 - TypeScript, Vitest
 
+## Worker Layering
+
+Dependencies run one way only. Do not introduce an import that reverses one of
+these arrows.
+
+```
+routes/  ->  broker/  ->  services/  ->  (R2, D1, crypto)
+   |            |
+   |            +------>  domain/     (pure, no I/O)
+   |
+   +---------->  http/, config/, middleware/
+```
+
+- `domain/` is pure policy logic: validation, grant resolution, authorization,
+  action lists, TTL clamping. No I/O, no framework types.
+- `services/` are adapters over the outside world. They do not make policy
+  decisions.
+- `broker/` is the single policy enforcement point. Every route that touches R2
+  goes through it, which is what keeps authorize, mint, and audit inseparable.
+- `routes/` parse input and shape responses. A route must not call
+  `mintCredentials` or `parentFor` directly.
+- `middleware/` establishes request id, policy validity, identity, grants, and
+  the bound audit writer before any handler runs.
+
 ## Key Files
 
 | Path | Purpose |
 |------|---------|
-| `src/worker/index.ts` | API routes and response security |
+| `src/worker/index.ts` | Worker entry point, ~20 lines |
+| `src/worker/app.ts` | Hono app: middleware order, route mounting, `onError`, `notFound` |
+| `src/worker/types.ts` | `AppEnv` bindings and context variables |
+| `src/worker/middleware/` | Request id, policy guard, identity, audit context |
+| `src/worker/routes/` | Route handlers, one module per resource |
+| `src/worker/routes/schemas.ts` | Zod request contracts and their error messages |
+| `src/worker/broker/scoped-credential.ts` | Authorize, clamp TTL, mint, audit |
+| `src/worker/config/policy.ts` | Policy load and boot-time validation result |
+| `src/worker/config/parent-tokens.ts` | `PARENT_<ID>_*` secret lookup, `ConfigError` |
+| `src/worker/config/limits.ts` | Body, upload, page size, and inline TTL bounds |
+| `src/worker/http/responses.ts` | `json()`, `downloadHeaders()`, private headers |
+| `src/worker/http/errors.ts` | `RequestError` and the error-to-status mapper |
+| `src/worker/http/validation.ts` | Body limit, JSON body guard, schema error hook |
 | `src/worker/auth/access.ts` | Cloudflare Access JWT verification |
 | `src/worker/domain/policy.ts` | Policy validation, grant resolution, authorization |
 | `src/worker/services/temp-credentials.ts` | R2 temporary credential minting via local JWT |
-| `src/worker/services/audit.ts` | D1 audit logging |
+| `src/worker/services/audit.ts` | D1 audit write and scoped read |
 | `src/worker/services/r2.ts` | R2 S3 API operations |
 | `src/client/` | React application |
 | `src/shared/` | Browser-safe API contracts |
@@ -101,11 +139,16 @@ npm run policy:import-members -- --roles <role> [--write]
 All tests are in `test/`. Run with `npm test`.
 
 Tests cover:
-- Policy validation edge cases
-- Grant resolution and authorization logic
-- Credential minting
-- API route behavior
-- Import script logic
+- Policy validation edge cases (`policy.test.ts`)
+- Grant resolution and authorization logic (`access.test.ts`)
+- Access assertion verification (`access-hostname.test.ts`)
+- Credential minting (`temp-credentials.test.ts`)
+- Credential issuance routes (`credential-route.test.ts`)
+- Browsing and object transfer routes (`object-route.test.ts`)
+- Audit read scoping and its SQL projection (`audit-route.test.ts`)
+- Audit write durability (`audit.test.ts`)
+- Error-to-status mapping and response headers (`error-mapping.test.ts`, `worker-response.test.ts`)
+- Import script logic (`import-members.test.ts`)
 
 When modifying authorization or credential logic, ensure tests pass before deploying.
 
@@ -149,12 +192,28 @@ Always check the latest Cloudflare docs for API changes:
 
 ### Adding an API route
 
-1. Add the route handler in `src/worker/index.ts`
-2. Use `resolveIdentity()` for authentication
-3. Use `resolveGrants()` and `authorize()` for authorization
-4. Always call `audit()` for granted and denied actions
-5. Return responses via the `json()` helper for consistent headers
-6. Add tests in `test/`
+1. Add the handler to the matching module in `src/worker/routes/`, or create a
+   new one and mount it in `src/worker/app.ts`
+2. Identity, grants, request id, and the audit writer are already on the
+   context: read `c.var.identity`, `c.var.grants`, `c.var.requestId`,
+   `c.var.audit`. Do not call `resolveIdentity()` or `resolveGrants()` again
+3. If the route touches R2, call `mintForPath()` or `mintForBucket()` from
+   `src/worker/broker/scoped-credential.ts`. Never call `mintCredentials()` or
+   `parentFor()` from a route: the broker is what guarantees the denial, the
+   TTL clamp, and the audit record all happen
+4. Validate input with a Zod schema in `src/worker/routes/schemas.ts` and the
+   `firstIssue` hook, so failures return the standard error envelope
+5. Type the response against `src/shared/api-types.ts` with `satisfies`, so a
+   server change that breaks the client fails the typecheck
+6. Throw for failures rather than building error responses. `app.onError` owns
+   the error-to-status mapping
+7. Add tests in `test/`
+
+### Adding a new kind of error
+
+Add the class next to the code that throws it, then add one branch to
+`toErrorResponse` in `src/worker/http/errors.ts` and one assertion to
+`test/error-mapping.test.ts`. Do not map statuses inside a route.
 
 ### Debugging credential issues
 

@@ -54,6 +54,7 @@ Temporary credentials remain bearer tokens. Anyone holding all three credential 
 ## Stack
 
 - Cloudflare Workers and Workers Static Assets
+- Hono for API routing and middleware, Zod for request contracts
 - React 19, Vite, and Tailwind CSS
 - Cloudflare Access for identity
 - R2 temporary credentials with local JWT signing
@@ -138,12 +139,25 @@ npm run deploy          # build and deploy
 | --- | --- |
 | `src/client/` | React application and API client |
 | `src/shared/` | Browser-safe API contracts |
+| `src/worker/index.ts` | Worker entry point |
+| `src/worker/app.ts` | Hono app: middleware order, route mounting, error mapping |
+| `src/worker/middleware/` | Request id, policy guard, identity, audit context |
+| `src/worker/routes/` | Route handlers and request schemas |
+| `src/worker/broker/` | Authorize, mint, and audit in one enforcement point |
 | `src/worker/auth/` | Cloudflare Access identity resolution |
 | `src/worker/domain/` | Policy validation and authorization |
 | `src/worker/services/` | R2, temporary credentials, and audit services |
-| `src/worker/index.ts` | API routes and response security |
+| `src/worker/config/` | Policy loading, parent token lookup, request limits |
+| `src/worker/http/` | Response headers, error mapping, body validation |
 | `migrations/` | Versioned D1 schema |
 | `docs/` | Architecture, deployment, operations, and threat model |
+
+The Worker is layered so each direction of dependency is one-way. `domain/`
+holds pure policy logic with no I/O. `services/` wraps the outside world: R2,
+D1, and credential signing. `broker/` composes them into the single
+authorize-mint-audit sequence every data route runs. `routes/` only parses
+input and shapes responses, and imports nothing from `services/` that it does
+not go through `broker/` to reach.
 
 ## Current limits
 
