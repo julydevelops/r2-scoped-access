@@ -6,6 +6,12 @@ node_modules/
 !.env.example
 .wrangler/
 .wrangler.deploy.jsonc
+
+# Deployment-specific access policy. Names real identity-provider groups and
+# real bucket prefixes, so it is local data like .dev.vars rather than source.
+# Start from policy.example.json.
+policy.json
+
 dist/
 *.log
 *.cpuprofile

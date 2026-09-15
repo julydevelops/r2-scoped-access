@@ -127,7 +127,7 @@ npm run policy:import-members -- --roles <role> [--write]
 
 ## Development Workflow
 
-1. Copy `.dev.vars.example` to `.dev.vars` and add development parent credentials
+1. Copy `policy.example.json` to `policy.json` (untracked deployment data) and `.dev.vars.example` to `.dev.vars`, then add development parent credentials
 2. Set the bucket-owning account ID in `wrangler.dev.jsonc`
 3. Run `npm run db:migrate:local` to set up local D1
 4. Start the API: `npm run dev:api` (port 8787)

@@ -69,7 +69,7 @@ Prerequisites: Node.js 22, an R2-enabled Cloudflare account, Zero Trust, and an 
 npm install
 ```
 
-1. Edit `policy.json` with your trust domains, roles, and assignments.
+1. Copy `policy.example.json` to `policy.json`, then edit your trust domains, roles, and assignments. `policy.json` is untracked because it names real identity-provider groups and bucket prefixes.
 2. Create one account-owned R2 token per trust domain. Use `Object Read & Write` and scope it only to that domain's buckets.
 3. Create a D1 database and replace the placeholder `database_id` in `wrangler.jsonc`.
 4. Replace the account and Access placeholders in `wrangler.jsonc`.
@@ -86,7 +86,7 @@ The complete procedure and acceptance checklist are in [Deployment](docs/deploym
 
 ## Local development
 
-Copy `.dev.vars.example` to `.dev.vars`, add development parent credentials, and set the bucket-owning account ID in `wrangler.dev.jsonc`. Then run the API and client in separate terminals:
+Copy `policy.example.json` to `policy.json` and `.dev.vars.example` to `.dev.vars`, add development parent credentials, and set the bucket-owning account ID in `wrangler.dev.jsonc`. Then run the API and client in separate terminals:
 
 ```sh
 npm run db:migrate:local
