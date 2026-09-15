@@ -18,7 +18,7 @@ Store the Access Key ID and Secret Access Key. The secret is shown once.
 
 ## 3. Configure policy
 
-Edit `policy.json`:
+Copy `policy.example.json` to `policy.json` and edit it. `policy.json` is untracked, like `.dev.vars`, because it names real identity-provider groups and bucket prefixes. Keeping it out of version control means a branch switch or a fresh checkout cannot silently replace your deployed authorization rules with the example ones. Back it up wherever you keep deployment configuration.
 
 ```json
 {
@@ -42,6 +42,8 @@ Edit `policy.json`:
 Use `prefixes: [""]` only when a role should reach the whole bucket. `allowDelete` is valid only on a write grant and merely makes delete available. The user must still request delete explicitly.
 
 Prefer stable identity-provider group emails over mutable display names. Group strings match exactly and fail closed when casing differs. User email assignments match case-insensitively. Direct email assignments are useful for contractors or break-glass access.
+
+Confirm what your identity provider actually emits before writing group assignments. The built-in `Cloudflare account members` provider carries no directory groups: it reports one group per Cloudflare account the user belongs to, named after the account, such as `Acme-Staging`. Policy written against directory group names like `Research` matches nothing under that provider, every request resolves zero grants, and the application renders an empty entitlement list. Either allow a real identity provider on the Access application, or assign roles to the account names or to individual emails. The Identity view lists the exact strings the Worker received, and `GET /accounts/<id>/access/organizations/<org>/users/<uid>/last_seen_identity` shows the same data without signing in.
 
 ### Import existing account members
 
@@ -79,11 +81,11 @@ Audit rows contain user email addresses plus requested bucket and object paths. 
 
 ## 5. Configure Wrangler
 
-Set these values in `wrangler.jsonc`:
+Set these values:
 
 - `CF_ACCOUNT_ID`: account that owns the R2 buckets.
 - `ACCESS_TEAM_DOMAIN`: for example, `example.cloudflareaccess.com`.
-- `ACCESS_AUD`: audience tag of the hostname-based Access application.
+- `ACCESS_AUD`: audience tag of the Access application.
 - `database_id`: D1 database created above.
 
 Replace the example Worker Custom Domain route with your deployment hostname:
@@ -91,6 +93,49 @@ Replace the example Worker Custom Domain route with your deployment hostname:
 ```jsonc
 "routes": [{ "pattern": "r2-access.example.com", "custom_domain": true }]
 ```
+
+### Keeping real values out of the repository
+
+`wrangler.jsonc` ships `replace-with-*` placeholders on purpose, because this is
+a deploy-your-own implementation. Editing it in place works, but it commits your
+account id, team domain, and Access audience tag to the repository and produces a
+conflict on every upstream pull.
+
+The alternative is an untracked copy. `.wrangler.deploy.jsonc` is already matched
+by `.gitignore`:
+
+```sh
+cp wrangler.jsonc .wrangler.deploy.jsonc   # then fill in the real values
+npm run build && npx wrangler deploy --config .wrangler.deploy.jsonc
+```
+
+Two settings differ from the tracked defaults when there is no zone in the
+account, because the deployment is reached on `workers.dev` instead of a custom
+domain:
+
+```jsonc
+"workers_dev": true,
+// and omit "routes" entirely
+```
+
+Deploying the tracked config as-is over a working deployment will overwrite its
+vars with the placeholders, point `AUDIT_DB` at the zeroed `database_id`, and turn
+off `workers_dev`. Run `npx wrangler deploy --config <file> --dry-run` first and
+confirm the printed bindings are the real ones.
+
+### Confirming a deployment landed
+
+`wrangler deploy` prints the new version id. Check it went live at 100 percent,
+and keep the previous id to roll back to:
+
+```sh
+npx wrangler deployments list --config .wrangler.deploy.jsonc
+npx wrangler rollback <previous-version-id> --config .wrangler.deploy.jsonc
+```
+
+Secrets are stored separately from the script and survive a deploy. The
+`secrets.required` declaration fails the deploy if one is missing, rather than
+publishing a Worker that 503s on its first credential request.
 
 ## 6. Store parent secrets
 
@@ -108,6 +153,16 @@ Use the JSON shape `{ "PARENT_RESEARCH_AKID": "...", "PARENT_RESEARCH_SECRET": "
 
 Create a self-hosted Access application for the exact deployment hostname. Restrict its login methods to the identity provider that supplies the groups used in policy.
 
+The hostname is whatever actually serves the app. With no zone in the account that
+is `<worker>.<subdomain>.workers.dev`, and the Access application must name that
+hostname; otherwise unauthenticated requests reach the Worker and are refused by
+`src/worker/middleware/identity.ts` with a 401 instead of being sent to a login
+page.
+
+Verify from an unauthenticated client that the deployment hostname returns a 302
+to `https://<team>.cloudflareaccess.com/cdn-cgi/access/login/<hostname>`. If it
+returns application JSON, Access is not in front of it.
+
 The Worker validates the application JWT and then calls the Access `get-identity` endpoint for the complete identity. This avoids relying on optional JWT custom group claims, which Access may trim to fit cookie limits. The application must receive the `CF_Authorization` cookie and be able to reach `<team>.cloudflareaccess.com`.
 
 Do not rely on Worker-level `ctx.access` with this production build. Workers Static Assets do not propagate that context to the Worker API. The hostname application assertion is verified by `src/worker/auth/access.ts`.
@@ -118,7 +173,9 @@ Do not rely on Worker-level `ctx.access` with this production build. Workers Sta
 npm test
 npm run typecheck
 npm run build
-npm run deploy
+npm run deploy                                           # tracked wrangler.jsonc
+# or, with an untracked deploy configuration:
+npx wrangler deploy --config .wrangler.deploy.jsonc
 ```
 
 Deploy does not enable Access automatically. Confirm the hostname shows an Access login before continuing.
