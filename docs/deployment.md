@@ -18,7 +18,7 @@ Store the Access Key ID and Secret Access Key. The secret is shown once.
 
 ## 3. Configure policy
 
-Edit `policy.json`:
+Copy `policy.example.json` to `policy.json` and edit it. `policy.json` is untracked, like `.dev.vars`, because it names real identity-provider groups and bucket prefixes. Keeping it out of version control means a branch switch or a fresh checkout cannot silently replace your deployed authorization rules with the example ones. Back it up wherever you keep deployment configuration.
 
 ```json
 {
@@ -42,6 +42,8 @@ Edit `policy.json`:
 Use `prefixes: [""]` only when a role should reach the whole bucket. `allowDelete` is valid only on a write grant and merely makes delete available. The user must still request delete explicitly.
 
 Prefer stable identity-provider group emails over mutable display names. Group strings match exactly and fail closed when casing differs. User email assignments match case-insensitively. Direct email assignments are useful for contractors or break-glass access.
+
+Confirm what your identity provider actually emits before writing group assignments. The built-in `Cloudflare account members` provider carries no directory groups: it reports one group per Cloudflare account the user belongs to, named after the account, such as `Acme-Staging`. Policy written against directory group names like `Research` matches nothing under that provider, every request resolves zero grants, and the application renders an empty entitlement list. Either allow a real identity provider on the Access application, or assign roles to the account names or to individual emails. The Identity view lists the exact strings the Worker received, and `GET /accounts/<id>/access/organizations/<org>/users/<uid>/last_seen_identity` shows the same data without signing in.
 
 ### Import existing account members
 

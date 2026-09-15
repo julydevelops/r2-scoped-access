@@ -43,6 +43,7 @@ D1 is the authoritative application audit store. Workers Logs contain only actio
 | --- | --- | --- |
 | `401` | Access assertion is absent, invalid, or lacks email | Check hostname Access, audience, team domain, and login method |
 | `403` | Identity is valid but policy does not cover the request | Inspect the Identity view and compare exact groups with policy |
+| Sign-in succeeds but no entitlements appear | Identity carries no group or email that any assignment matches | Compare the Identity view strings against `policy.json`. The `Cloudflare account members` login method emits account names as groups, not directory groups |
 | `503` missing parent | A domain secret is unset | Set both parent secrets for the named domain |
 | `503` audit unavailable | D1 could not store the event | Check binding, migrations, D1 health, and Worker logs |
 | R2 credential rejected after issuance | Parent token may be revoked or rotated | Check the domain's parent token and secrets |
