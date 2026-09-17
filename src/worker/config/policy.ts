@@ -1,4 +1,4 @@
-import policyDocument from "../../../policy.json";
+import policyDocument from "policy-document";
 import { validatePolicy, type Policy } from "../domain/policy";
 
 /**

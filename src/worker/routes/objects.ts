@@ -134,6 +134,7 @@ export const objectRoutes = new Hono<AppEnv>()
 			key,
 			c.req.raw.body ?? new ArrayBuffer(0),
 			c.req.header("Content-Type") ?? null,
+			contentLength,
 		);
 		if (isFailure(result)) return await scoped.failed(result);
 		await scoped.granted();

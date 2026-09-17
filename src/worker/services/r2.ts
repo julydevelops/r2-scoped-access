@@ -23,41 +23,42 @@ export interface ListResult {
 }
 
 /** Distinguishes rejected credentials from an out-of-scope request. */
-export type R2Failure =
-	| { kind: "revoked"; status: 401; message: string }
-	| { kind: "forbidden"; status: 403; message: string }
-	| { kind: "notFound"; status: 404; message: string }
-	| { kind: "other"; status: number; message: string };
+export interface R2Failure {
+	kind: "authentication" | "forbidden" | "notFound" | "other";
+	status: number;
+	message: string;
+}
 
 export function classify(status: number, body: string): R2Failure {
 	const code = body.match(/<Code>(.*?)<\/Code>/)?.[1] ?? "";
-	if (status === 401) {
-		return {
-			kind: "revoked",
-			status: 401,
-			message: "Credential rejected. The parent token for this trust domain has been revoked or rotated.",
-		};
+	if (code === "Unauthorized") return { kind: "authentication", status, message: "R2 rejected the credential (Unauthorized)." };
+	if (code === "ExpiredRequest") return { kind: "authentication", status, message: "The signed R2 request has expired." };
+	if (code === "SignatureDoesNotMatch") {
+		return { kind: "authentication", status, message: "R2 rejected the request signature." };
 	}
-	if (status === 403) {
-		return {
-			kind: "forbidden",
-			status: 403,
-			message: `Not entitled to that path (${code || "AccessDenied"}).`,
-		};
+	if (code === "AccessDenied") return { kind: "forbidden", status, message: "R2 denied that operation or path." };
+	if (code === "ObjectLockedByBucketPolicy") {
+		return { kind: "forbidden", status, message: "The object is protected by an R2 bucket lock rule." };
 	}
-	if (status === 404) {
-		return { kind: "notFound", status: 404, message: "No such object." };
+	if (code === "NotEntitled") {
+		return { kind: "other", status, message: "The account is not entitled to this R2 operation." };
 	}
+	if (code === "NoSuchBucket") return { kind: "notFound", status, message: "No such bucket." };
+	if (code === "NoSuchKey") return { kind: "notFound", status, message: "No such object." };
+	if (status === 401) return { kind: "authentication", status, message: "R2 rejected the credential." };
+	if (status === 403) return { kind: "forbidden", status, message: `R2 denied the request${code === "" ? "." : ` (${code}).`}` };
+	if (status === 404) return { kind: "notFound", status, message: code || "R2 resource not found." };
 	return { kind: "other", status, message: code || `R2 returned ${status}` };
 }
 
-function client(credentials: TempCredentials): AwsClient {
+function client(credentials: TempCredentials, retries = 10): AwsClient {
 	return new AwsClient({
 		accessKeyId: credentials.accessKeyId,
 		secretAccessKey: credentials.secretAccessKey,
 		sessionToken: credentials.sessionToken,
 		service: "s3",
 		region: "auto",
+		retries,
 	});
 }
 
@@ -139,15 +140,26 @@ export async function putObject(
 	key: string,
 	body: ReadableStream | ArrayBuffer,
 	contentType: string | null,
+	contentLength: number,
 ): Promise<{ ok: true } | R2Failure> {
 	const headers = new Headers();
+	headers.set("Content-Length", String(contentLength));
 	if (contentType !== null) headers.set("Content-Type", contentType);
-	const response = await client(credentials).fetch(`${s3Endpoint(accountId)}/${bucket}/${encodeKey(key)}`, {
-		method: "PUT",
-		body,
-		headers,
-	});
+	const source = body instanceof ArrayBuffer ? new Blob([body]).stream() : body;
+	const fixed = new FixedLengthStream(contentLength);
+	const pipeline = source.pipeTo(fixed.writable);
+	const [responseResult, pipelineResult] = await Promise.allSettled([
+		client(credentials, 0).fetch(`${s3Endpoint(accountId)}/${bucket}/${encodeKey(key)}`, {
+			method: "PUT",
+			body: fixed.readable,
+			headers,
+		}),
+		pipeline,
+	]);
+	if (responseResult.status === "rejected") throw responseResult.reason;
+	const response = responseResult.value;
 	if (!response.ok) return classify(response.status, await response.text());
+	if (pipelineResult.status === "rejected") throw pipelineResult.reason;
 	return { ok: true };
 }
 

@@ -50,8 +50,8 @@ The Cloudflare account is the hard isolation boundary for Worker bindings. Put s
 
 - Missing or invalid Access identity returns `401`.
 - A policy denial returns `403`.
-- A revoked parent credential is distinguished from a policy denial.
-- Missing parent secrets or unavailable audit storage return `503`.
+- R2 authentication and signature failures are distinguished from policy denials without guessing their cause.
+- Broken Access configuration, unavailable Access services, missing parent secrets, or unavailable audit storage return `503`.
 - Unexpected failures return a generic `500` with a request ID, while details remain in Workers Logs.
 
 ## Rollout checklist

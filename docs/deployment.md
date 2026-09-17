@@ -71,11 +71,7 @@ The command preserves all group assignments and skips existing email assignments
 npx wrangler d1 create r2-scoped-access-audit
 ```
 
-Replace the placeholder `database_id` in `wrangler.jsonc`, then apply migrations:
-
-```sh
-npm run db:migrate
-```
+Copy `wrangler.jsonc` to `.wrangler.deploy.jsonc` and replace its placeholder `database_id`. Apply migrations after completing the remaining deployment configuration in step 5.
 
 Audit rows contain user email addresses plus requested bucket and object paths. Choose an appropriate D1 location, retention period, and export policy before storing production activity.
 
@@ -97,16 +93,21 @@ Replace the example Worker Custom Domain route with your deployment hostname:
 ### Keeping real values out of the repository
 
 `wrangler.jsonc` ships `replace-with-*` placeholders on purpose, because this is
-a deploy-your-own implementation. Editing it in place works, but it commits your
-account id, team domain, and Access audience tag to the repository and produces a
-conflict on every upstream pull.
+a deploy-your-own implementation. Editing it in place works with direct Wrangler
+commands, but the npm deployment scripts intentionally require the untracked
+copy. Editing the tracked file also commits your account id, team domain, and
+Access audience tag and produces a conflict on every upstream pull.
+
+The deployment scripts run a local preflight that requires `policy.json`, checks
+for tracked placeholder values, and verifies that the deployment config aliases
+`policy-document` to `./policy.json`. Existing untracked config copies must add
+that alias before deployment.
 
 The alternative is an untracked copy. `.wrangler.deploy.jsonc` is already matched
 by `.gitignore`:
 
 ```sh
 cp wrangler.jsonc .wrangler.deploy.jsonc   # then fill in the real values
-npm run build && npx wrangler deploy --config .wrangler.deploy.jsonc
 ```
 
 Two settings differ from the tracked defaults when there is no zone in the
@@ -118,9 +119,16 @@ domain:
 // and omit "routes" entirely
 ```
 
+After every deployment value is configured, validate the untracked files and apply the D1 migrations:
+
+```sh
+npm run deploy:check
+npm run db:migrate
+```
+
 Deploying the tracked config as-is over a working deployment will overwrite its
 vars with the placeholders, point `AUDIT_DB` at the zeroed `database_id`, and turn
-off `workers_dev`. Run `npx wrangler deploy --config <file> --dry-run` first and
+off `workers_dev`. Run `npm run deploy:dry-run` first and
 confirm the printed bindings are the real ones.
 
 ### Confirming a deployment landed
@@ -144,7 +152,7 @@ The domain `RESEARCH` maps to `PARENT_RESEARCH_AKID` and `PARENT_RESEARCH_SECRET
 Prepare an untracked JSON file outside the repository containing all parent pairs, then upload them in one operation:
 
 ```sh
-npx wrangler secret bulk /secure/path/r2-access-secrets.json
+npx wrangler secret bulk /secure/path/r2-access-secrets.json --config .wrangler.deploy.jsonc
 ```
 
 Use the JSON shape `{ "PARENT_RESEARCH_AKID": "...", "PARENT_RESEARCH_SECRET": "..." }`, adding both keys for every domain. Restrict access to the file and remove it after upload. Bulk upload avoids deploying a mismatched access-key and secret pair.
@@ -173,9 +181,8 @@ Do not rely on Worker-level `ctx.access` with this production build. Workers Sta
 npm test
 npm run typecheck
 npm run build
-npm run deploy                                           # tracked wrangler.jsonc
-# or, with an untracked deploy configuration:
-npx wrangler deploy --config .wrangler.deploy.jsonc
+npm run deploy:dry-run
+npm run deploy
 ```
 
 Deploy does not enable Access automatically. Confirm the hostname shows an Access login before continuing.

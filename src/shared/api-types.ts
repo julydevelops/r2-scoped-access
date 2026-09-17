@@ -78,6 +78,6 @@ export type IdentityResponse = MeResponse;
 
 export interface ErrorResponse {
 	error: string;
-	kind?: "revoked" | "forbidden" | "notFound" | "other";
+	kind?: "authentication" | "forbidden" | "notFound" | "other";
 	requestId?: string;
 }
