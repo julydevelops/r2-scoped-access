@@ -2,6 +2,7 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "r2-scoped-access-dev",
 	"main": "src/worker/index.ts",
+	"alias": { "policy-document": "./policy.json" },
 	"compatibility_date": "2026-09-10",
 	"compatibility_flags": ["nodejs_compat"],
 	"vars": {

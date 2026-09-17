@@ -1,5 +1,5 @@
 import type { ErrorResponse } from "../../shared/api-types";
-import { IdentityError } from "../auth/access";
+import { AccessConfigError, AccessUnavailableError, IdentityError } from "../auth/access";
 import { ConfigError } from "../config/parent-tokens";
 import { AuditError } from "../services/audit";
 import { MintError } from "../services/temp-credentials";
@@ -34,6 +34,9 @@ export function toErrorResponse(error: unknown, requestId: string): Response {
 	}
 	if (error instanceof IdentityError) {
 		return json({ error: error.message, requestId } satisfies ErrorResponse, 401);
+	}
+	if (error instanceof AccessConfigError || error instanceof AccessUnavailableError) {
+		return json({ error: "Cloudflare Access identity resolution is unavailable.", requestId } satisfies ErrorResponse, 503);
 	}
 	return json({ error: "An unexpected error occurred.", requestId } satisfies ErrorResponse, 500);
 }

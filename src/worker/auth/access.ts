@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { JOSEError } from "jose/errors";
 import type { Identity } from "../domain/policy";
 
 /**
@@ -15,6 +16,8 @@ import type { Identity } from "../domain/policy";
  */
 
 export class IdentityError extends Error {}
+export class AccessConfigError extends Error {}
+export class AccessUnavailableError extends Error {}
 
 interface AccessIdentity {
 	email?: string;
@@ -28,7 +31,9 @@ interface AccessContext {
 	getIdentity(): Promise<AccessIdentity | null>;
 }
 
-type MaybeAccessContext = Pick<ExecutionContext, "access"> & { access?: AccessContext };
+interface MaybeAccessContext {
+	access?: AccessContext;
+}
 
 export interface AccessConfig {
 	teamDomain?: string;
@@ -87,12 +92,17 @@ export async function resolveIdentity(
 	ctx: Pick<ExecutionContext, "access">,
 	config: AccessConfig,
 ): Promise<Identity> {
-	const access = (ctx as MaybeAccessContext).access;
+	const access = (ctx as unknown as MaybeAccessContext).access;
 	if (access !== undefined) {
 		if (config.aud !== undefined && !config.aud.startsWith("replace-with-") && access.aud !== config.aud) {
 			throw new IdentityError("Access authenticated this request for a different application audience");
 		}
-		const identity = await access.getIdentity();
+		let identity: AccessIdentity | null;
+		try {
+			identity = await access.getIdentity();
+		} catch (error) {
+			throw new AccessUnavailableError(`Access identity lookup failed: ${errorMessage(error)}`);
+		}
 		const email = identity?.email;
 		if (typeof email !== "string" || email.length === 0) {
 			throw new IdentityError("Access authenticated the request but returned no email claim");
@@ -107,13 +117,19 @@ const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
 async function identityFromAssertion(request: Request, config: AccessConfig): Promise<Identity> {
 	const { teamDomain, aud } = config;
-	if (teamDomain === undefined || aud === undefined || teamDomain.startsWith("replace-with-")) {
-		throw new IdentityError(
+	if (
+		teamDomain === undefined ||
+		aud === undefined ||
+		aud === "" ||
+		teamDomain.startsWith("replace-with-") ||
+		aud.startsWith("replace-with-")
+	) {
+		throw new AccessConfigError(
 			"request did not come through Cloudflare Access, and no hostname-based Access application is configured",
 		);
 	}
 	if (!/^[a-z0-9-]+\.cloudflareaccess\.com$/i.test(teamDomain)) {
-		throw new IdentityError("ACCESS_TEAM_DOMAIN must be a cloudflareaccess.com team domain");
+		throw new AccessConfigError("ACCESS_TEAM_DOMAIN must be a cloudflareaccess.com team domain");
 	}
 
 	const token =
@@ -130,28 +146,55 @@ async function identityFromAssertion(request: Request, config: AccessConfig): Pr
 		jwksCache.set(url, jwks);
 	}
 
+	let payload: AccessIdentity;
 	try {
 		const verified = await jwtVerify(token, jwks, {
 			issuer: `https://${teamDomain}`,
 			audience: aud,
 		});
-		const payload = verified.payload as AccessIdentity;
-		const identityResponse = await fetch(`https://${teamDomain}/cdn-cgi/access/get-identity`, {
+		payload = verified.payload as AccessIdentity;
+	} catch (error) {
+		if (isJwksFailure(error)) {
+			throw new AccessUnavailableError(`Access signing keys could not be retrieved: ${errorMessage(error)}`);
+		}
+		throw new IdentityError(`invalid Access assertion: ${errorMessage(error)}`);
+	}
+
+	let identityResponse: Response;
+	try {
+		identityResponse = await fetch(`https://${teamDomain}/cdn-cgi/access/get-identity`, {
 			headers: { Cookie: `CF_Authorization=${token}` },
 		});
-		if (!identityResponse.ok) {
-			throw new IdentityError(`Access identity lookup failed with ${identityResponse.status}`);
-		}
-		const fullIdentity = await identityResponse.json<AccessIdentity>();
-		const email = fullIdentity.email ?? payload.email;
-		if (typeof email !== "string" || email.length === 0) {
-			throw new IdentityError("Access assertion carries no email claim");
-		}
-		return { email, groups: readGroups(fullIdentity) };
 	} catch (error) {
-		if (error instanceof IdentityError) throw error;
-		throw new IdentityError(`invalid Access assertion: ${(error as Error).message}`);
+		throw new AccessUnavailableError(`Access identity lookup failed: ${errorMessage(error)}`);
 	}
+	if (!identityResponse.ok) {
+		if (identityResponse.status === 401 || identityResponse.status === 403) {
+			throw new IdentityError(`Access identity lookup rejected the assertion with ${identityResponse.status}`);
+		}
+		throw new AccessUnavailableError(`Access identity lookup failed with ${identityResponse.status}`);
+	}
+
+	let fullIdentity: AccessIdentity;
+	try {
+		fullIdentity = await identityResponse.json<AccessIdentity>();
+	} catch (error) {
+		throw new AccessUnavailableError(`Access identity lookup returned invalid JSON: ${errorMessage(error)}`);
+	}
+	const email = fullIdentity.email ?? payload.email;
+	if (typeof email !== "string" || email.length === 0) {
+		throw new IdentityError("Access assertion carries no email claim");
+	}
+	return { email, groups: readGroups(fullIdentity) };
+}
+
+function isJwksFailure(error: unknown): boolean {
+	if (!(error instanceof JOSEError)) return true;
+	return error.code === "ERR_JOSE_GENERIC" || error.code === "ERR_JWKS_INVALID" || error.code === "ERR_JWKS_TIMEOUT";
+}
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 function parseCookie(header: string | null, name: string): string | null {

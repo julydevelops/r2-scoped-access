@@ -128,6 +128,14 @@ describe("error mapping", () => {
 		expect((await response.json<ErrorResponse>()).error).toContain("different application audience");
 	});
 
+	it("reports missing hostname Access configuration as unavailable", async () => {
+		const response = await worker.fetch(new Request("https://example.com/api/me"), baseEnv, {});
+		expect(response.status).toBe(503);
+		expect((await response.json<ErrorResponse>()).error).toBe(
+			"Cloudflare Access identity resolution is unavailable.",
+		);
+	});
+
 	it("keeps unknown API paths as no-store JSON errors", async () => {
 		const response = await worker.fetch(new Request("https://example.com/api/missing"), baseEnv, researcher);
 		expect(response.status).toBe(404);

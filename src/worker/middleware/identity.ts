@@ -1,6 +1,6 @@
 import { createMiddleware } from "hono/factory";
 import type { ErrorResponse } from "../../shared/api-types";
-import { IdentityError, resolveIdentity } from "../auth/access";
+import { AccessConfigError, AccessUnavailableError, IdentityError, resolveIdentity } from "../auth/access";
 import { policy } from "../config/policy";
 import { resolveGrants } from "../domain/policy";
 import { json } from "../http/responses";
@@ -16,7 +16,7 @@ import type { AppEnv } from "../types";
  * Failures are handled locally rather than thrown, because the two cases are
  * meaningfully different to an operator: a rejected assertion is the caller's
  * problem (401), while a broken Access configuration or an unreachable identity
- * endpoint is ours (500), and only the latter is worth a log line.
+ * endpoint is ours (503), and only the latter is worth a log line.
  */
 export const identity = createMiddleware<AppEnv>(async (c, next) => {
 	const requestId = c.var.requestId;
@@ -36,6 +36,9 @@ export const identity = createMiddleware<AppEnv>(async (c, next) => {
 		}
 		const message = error instanceof Error ? error.message : String(error);
 		console.error(JSON.stringify({ message: "identity resolution failed", error: message, requestId }));
+		if (error instanceof AccessConfigError || error instanceof AccessUnavailableError) {
+			return json({ error: "Cloudflare Access identity resolution is unavailable.", requestId } satisfies ErrorResponse, 503);
+		}
 		return json({ error: "Identity could not be resolved.", requestId } satisfies ErrorResponse, 500);
 	}
 

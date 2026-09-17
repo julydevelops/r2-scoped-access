@@ -71,9 +71,9 @@ npm install
 
 1. Copy `policy.example.json` to `policy.json`, then edit your trust domains, roles, and assignments. `policy.json` is untracked because it names real identity-provider groups and bucket prefixes.
 2. Create one account-owned R2 token per trust domain. Use `Object Read & Write` and scope it only to that domain's buckets.
-3. Create a D1 database and replace the placeholder `database_id` in `wrangler.jsonc`.
-4. Replace the account and Access placeholders in `wrangler.jsonc`.
-5. Set each `PARENT_<DOMAIN>_AKID` and `PARENT_<DOMAIN>_SECRET` with `wrangler secret put`.
+3. Copy `wrangler.jsonc` to `.wrangler.deploy.jsonc`, which is untracked.
+4. Create a D1 database and replace the account, Access, route, and database placeholders in `.wrangler.deploy.jsonc`.
+5. Set each `PARENT_<DOMAIN>_AKID` and `PARENT_<DOMAIN>_SECRET` with `wrangler secret put --config .wrangler.deploy.jsonc`.
 6. Protect the deployment hostname with a self-hosted Cloudflare Access application.
 7. Apply migrations and deploy.
 
@@ -130,7 +130,9 @@ npm run types:check     # generated Worker binding types
 npm run policy:import-members -- --help
 npm run build           # production client build
 npm run db:migrate      # apply remote D1 migrations
-npm run deploy          # build and deploy
+npm run deploy:check    # reject missing or placeholder deployment values
+npm run deploy:dry-run  # validate the untracked deployment config
+npm run deploy          # build and deploy with the untracked config
 ```
 
 ## Project layout

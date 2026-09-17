@@ -1,4 +1,4 @@
-import { MAX_TTL_SECONDS, type R2Action, type R2Scope } from "../services/temp-credentials";
+import { MAX_TTL_SECONDS, type R2Action, type R2Scope } from "../services/temp-credentials.ts";
 
 /**
  * Deny-by-default policy model.

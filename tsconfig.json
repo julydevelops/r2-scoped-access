@@ -16,7 +16,8 @@
 		"noEmit": true,
 		"isolatedModules": true,
 		"verbatimModuleSyntax": true,
-		"allowImportingTsExtensions": true
+		"allowImportingTsExtensions": true,
+		"paths": { "policy-document": ["./policy.example.json"] }
 	},
-	"include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "test/**/*.ts", "policy.json", "vite.config.ts", "vitest.config.ts", "worker-configuration.d.ts"]
+	"include": ["src/**/*.ts", "src/**/*.tsx", "scripts/**/*.ts", "test/**/*.ts", "policy.example.json", "vite.config.ts", "vitest.config.ts", "worker-configuration.d.ts"]
 }

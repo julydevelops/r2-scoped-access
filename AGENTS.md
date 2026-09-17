@@ -121,7 +121,9 @@ npm run types:check     # generated Worker binding types
 npm run build           # production client build
 npm run db:migrate      # apply remote D1 migrations
 npm run db:migrate:local # apply local D1 migrations
-npm run deploy          # build and deploy
+npm run deploy:check    # reject missing or placeholder deployment values
+npm run deploy:dry-run  # validate the untracked deployment config
+npm run deploy          # build and deploy with the untracked config
 npm run policy:import-members -- --roles <role> [--write]
 ```
 
